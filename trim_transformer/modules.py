@@ -126,25 +126,15 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         is_batched = query.dim() == 3
 
         if not is_batched:
-            query = query.unsqueeze(1)
-            key = key.unsqueeze(1)
-            value = value.unsqueeze(1)
+            query, key, value = (x.unsqueeze(1) for x in (query, key, value))
         assert query.dim() == key.dim() == value.dim() == 3
 
-        if self.batch_first and is_batched:
-            # Convert from batch_first to seq_first
-            if key is value:
-                if query is key:
-                    query = key = value = query.transpose(1, 0)
-                else:
-                    query, key = (x.transpose(1, 0) for x in (query, key))
-                    value = key
-            else:
-                query, key, value = (x.transpose(1, 0) for x in (query, key, value))
+        if not self.batch_first:
+            query, key, value = (x.transpose(1, 0) for x in (query, key, value))
 
         # Get dimensions
-        tgt_len, bsz, embed_dim = query.shape
-        src_len, _, _ = key.shape
+        bsz, tgt_len, embed_dim = query.shape
+        bsz, src_len, _ = key.shape
         
         # Input projections
         if not self._qkv_same_embed_dim:
@@ -164,10 +154,10 @@ class CumulativeLinearMultiheadAttentionKV(Module):
             v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
             src_len += 1
 
-        # Reshape for multi-head attention: (seq_len, batch, embed_dim) -> (batch, num_heads, seq_len, head_dim)
-        q = q.view(tgt_len, bsz, self.num_heads, self.head_dim).transpose(0, 1).transpose(1, 2)
-        k = k.view(src_len, bsz, self.num_heads, self.head_dim).transpose(0, 1).transpose(1, 2)
-        v = v.view(src_len, bsz, self.num_heads, self.head_dim).transpose(0, 1).transpose(1, 2)
+        # Reshape for multi-head attention: (batch, seq_len, embed_dim) -> (batch, num_heads, seq_len, head_dim)
+        q = q.view(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2)
+        v = v.view(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2)
 
         if src_key_padding_mask is not None:
             mask_expanded = src_key_padding_mask.unsqueeze(1).unsqueeze(3)
@@ -210,7 +200,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         attn_output = attn_output.view(tgt_len, bsz, embed_dim)
 
         # Convert back to batch_first if needed
-        if self.batch_first and is_batched:
+        if self.batch_first:
             attn_output = attn_output.transpose(1, 0)
 
         # Remove batch dimension if input was unbatched
