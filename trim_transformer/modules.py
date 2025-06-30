@@ -189,17 +189,19 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         if update_kv_cache:
             self.kv_cache = key_value_store[:, :, -1:, :, :]
 
-        # Reshape back: (batch, num_heads, tgt_len, head_dim) -> (tgt_len, batch, embed_dim)
-        attn_output = attn_output.transpose(1, 2).contiguous().view(bsz, tgt_len, embed_dim)
-        attn_output = attn_output.transpose(0, 1)
+        # Reshape back: (batch, num_heads, tgt_len, head_dim) -> (batch, tgt_len, embed_dim)
+        attn_output = attn_output.transpose(1, 2).reshape(bsz, tgt_len, embed_dim)
 
         # Output projection
-        attn_output = torch.nn.functional.linear(attn_output.contiguous().view(-1, embed_dim), 
-                                               self.out_proj.weight, self.out_proj.bias)
-        attn_output = attn_output.view(tgt_len, bsz, embed_dim)
+        attn_output = torch.nn.functional.linear(
+            attn_output.reshape(-1, embed_dim),
+            self.out_proj.weight,
+            self.out_proj.bias,
+        )
+        attn_output = attn_output.reshape(bsz, tgt_len, embed_dim)
 
-        # Convert back to batch_first if needed
-        if self.batch_first:
+        # Convert back to seq_first if needed
+        if not self.batch_first:
             attn_output = attn_output.transpose(1, 0)
 
         # Remove batch dimension if input was unbatched
