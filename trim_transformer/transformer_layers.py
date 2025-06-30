@@ -8,7 +8,7 @@ from torch import Tensor
 from torch.nn.init import xavier_uniform_
 from torch.nn import Module, ModuleList, Dropout, Linear, LayerNorm
 
-from modules import CumulativeLinearMultiheadAttentionKV
+from .modules import CumulativeLinearMultiheadAttentionKV
 
 
 def _get_clones(module, N):

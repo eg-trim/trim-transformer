@@ -6,7 +6,7 @@ from torch.nn.functional import _in_projection, _in_projection_packed
 from torch.nn.modules.linear import NonDynamicallyQuantizableLinear
 from typing import Optional
 
-from functional import cumulative_linear_attn
+from .functional import cumulative_linear_attn
 
 class CumulativeLinearMultiheadAttentionKV(Module):
     """
