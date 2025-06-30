@@ -160,11 +160,10 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         v = v.view(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2)
 
         if src_key_padding_mask is not None:
+            assert src_key_padding_mask.shape == (bsz, src_len)
             mask_expanded = src_key_padding_mask.unsqueeze(1).unsqueeze(3)
-            mask_expanded = mask_expanded.expand(bsz, self.num_heads, -1, self.head_dim)
-            q = q.masked_fill(mask_expanded[:, :, :q.size(2), :], 0.0)
-            k = k.masked_fill(mask_expanded[:, :, :k.size(2), :], 0.0)
-            v = v.masked_fill(mask_expanded[:, :, :v.size(2), :], 0.0)
+            mask_expanded = mask_expanded.expand(bsz, self.num_heads, src_len, self.head_dim)
+            k = k.masked_fill(mask_expanded, 0.0)
 
         # Apply cumulative linear attention
         dropout_p = self.dropout if self.training else 0.0
