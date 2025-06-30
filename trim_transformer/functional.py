@@ -10,6 +10,7 @@ def cumulative_linear_attn(query, key, value, mask_after = None, dropout_p=0.0,
     if is_causal:
         assert mask_after is None
         mask_after = torch.arange(dict_size-seq_len, dict_size, dtype=torch.int32)
+        mask_after = mask_after.to(query.device)
     elif mask_after is None:
         mask_after = torch.full((seq_len,), dict_size-1, dtype=torch.int32)
         mask_after = mask_after.to(query.device)
