@@ -130,7 +130,6 @@ class CumulativeTransformerEncoderLayerKV(Module):
             - mask_after: (S,) where S is sequence length
         """
 
-        # see Fig. 1 of https://arxiv.org/pdf/2002.04745v1.pdf
         x = src
         if self.norm_first:
             x = x + self._sa_block(
@@ -152,20 +151,17 @@ class CumulativeTransformerEncoderLayerKV(Module):
         self,
         x: Tensor,
         mask_after: Optional[Tensor],
-        key_padding_mask: Optional[Tensor],
+        src_key_padding_mask: Optional[Tensor],
         is_causal: bool = False,
         use_kv_cache: bool = False,
         update_kv_cache: bool = False,
     ) -> Tensor:
-        # Note: key_padding_mask is not supported by cumulative attention
-        if key_padding_mask is not None:
-            warnings.warn("key_padding_mask is not fully supported with cumulative attention yet")
-        
         x = self.self_attn(
             x,
             x,
             x,
             mask_after=mask_after,
+            src_key_padding_mask=src_key_padding_mask,
             is_causal=is_causal,
             use_kv_cache=use_kv_cache,
             update_kv_cache=update_kv_cache,

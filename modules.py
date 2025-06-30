@@ -119,13 +119,13 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         value: Tensor,
         is_causal: bool = False,
         mask_after: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
         use_kv_cache: bool = False,
         update_kv_cache: bool = False,
     ) -> tuple[Tensor, Optional[Tensor]]:
         is_batched = query.dim() == 3
 
         if not is_batched:
-            # Add batch dimension
             query = query.unsqueeze(1)
             key = key.unsqueeze(1)
             value = value.unsqueeze(1)
@@ -168,6 +168,13 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         q = q.view(tgt_len, bsz, self.num_heads, self.head_dim).transpose(0, 1).transpose(1, 2)
         k = k.view(src_len, bsz, self.num_heads, self.head_dim).transpose(0, 1).transpose(1, 2)
         v = v.view(src_len, bsz, self.num_heads, self.head_dim).transpose(0, 1).transpose(1, 2)
+
+        if src_key_padding_mask is not None:
+            mask_expanded = src_key_padding_mask.unsqueeze(1).unsqueeze(3)
+            mask_expanded = mask_expanded.expand(bsz, self.num_heads, -1, self.head_dim)
+            q = q.masked_fill(mask_expanded[:, :, :q.size(2), :], 0.0)
+            k = k.masked_fill(mask_expanded[:, :, :k.size(2), :], 0.0)
+            v = v.masked_fill(mask_expanded[:, :, :v.size(2), :], 0.0)
 
         # Apply cumulative linear attention
         dropout_p = self.dropout if self.training else 0.0
