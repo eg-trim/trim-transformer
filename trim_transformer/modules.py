@@ -118,7 +118,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         key: Tensor,
         value: Tensor,
         is_causal: bool = False,
-        mask_after: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
         use_kv_cache: bool = False,
         update_kv_cache: bool = False,
@@ -178,7 +178,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
 
         attn_output, key_value_store = cumulative_linear_attn(
             q, k, v, 
-            mask_after=mask_after,
+            mask=mask,
             dropout_p=dropout_p,
             is_causal=is_causal,
             scale=None,

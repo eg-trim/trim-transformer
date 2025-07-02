@@ -104,7 +104,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
     def forward(
         self,
         src: Tensor,
-        mask_after: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
         is_causal: bool = False,
         use_kv_cache: bool = False,
@@ -114,11 +114,11 @@ class CumulativeTransformerEncoderLayerKV(Module):
 
         Args:
             src: the sequence to the encoder layer (required).
-            mask_after: the mask_after tensor for cumulative attention (optional).
+            mask: the mask tensor for cumulative attention (optional).
                 Should be of shape (seq_len,) with integer values indicating 
                 the last position each token can attend to.
             src_key_padding_mask: the mask for the src keys per batch (optional).
-            is_causal: If specified, applies a causal mask. Will override mask_after.
+            is_causal: If specified, applies a causal mask. Will override mask.
                 Default: ``False``.
             use_kv_cache: Whether to use key-value caching for efficiency.
                 Default: ``False``.
@@ -127,19 +127,19 @@ class CumulativeTransformerEncoderLayerKV(Module):
 
         Shape:
             - src: (N, S, E) if batch_first=True or (S, N, E) if batch_first=False
-            - mask_after: (S,) where S is sequence length
+            - mask: (S,) where S is sequence length
         """
 
         x = src
         if self.norm_first:
             x = x + self._sa_block(
-                self.norm1(x), mask_after, src_key_padding_mask, is_causal=is_causal,
+                self.norm1(x), mask, src_key_padding_mask, is_causal=is_causal,
                 use_kv_cache=use_kv_cache, update_kv_cache=update_kv_cache
             )
             x = x + self._ff_block(self.norm2(x))
         else:
             x = self.norm1(
-                x + self._sa_block(x, mask_after, src_key_padding_mask, is_causal=is_causal,
+                x + self._sa_block(x, mask, src_key_padding_mask, is_causal=is_causal,
                                  use_kv_cache=use_kv_cache, update_kv_cache=update_kv_cache)
             )
             x = self.norm2(x + self._ff_block(x))
@@ -150,7 +150,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
     def _sa_block(
         self,
         x: Tensor,
-        mask_after: Optional[Tensor],
+        mask: Optional[Tensor],
         src_key_padding_mask: Optional[Tensor],
         is_causal: bool = False,
         use_kv_cache: bool = False,
@@ -160,7 +160,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
             x,
             x,
             x,
-            mask_after=mask_after,
+            mask=mask,
             src_key_padding_mask=src_key_padding_mask,
             is_causal=is_causal,
             use_kv_cache=use_kv_cache,
@@ -209,7 +209,7 @@ class CumulativeTransformerEncoderKV(Module):
     def forward(
         self,
         src: Tensor,
-        mask_after: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
         is_causal: Optional[bool] = None,
         use_kv_cache: bool = False,
@@ -219,9 +219,9 @@ class CumulativeTransformerEncoderKV(Module):
 
         Args:
             src: the sequence to the encoder (required).
-            mask_after: the mask_after tensor for cumulative attention (optional).
+            mask: the mask tensor for cumulative attention (optional).
             src_key_padding_mask: the mask for the src keys per batch (optional).
-            is_causal: If specified, applies a causal mask. Will override mask_after.
+            is_causal: If specified, applies a causal mask. Will override mask.
                 Default: ``None``; try to detect a causal mask.
             use_kv_cache: Whether to use key-value caching for efficiency.
                 Default: ``False``.
@@ -230,7 +230,7 @@ class CumulativeTransformerEncoderKV(Module):
 
         Shape:
             - src: (N, S, E) if batch_first=True or (S, N, E) if batch_first=False
-            - mask_after: (S,) where S is sequence length
+            - mask: (S,) where S is sequence length
         """
         output = src
 
@@ -241,7 +241,7 @@ class CumulativeTransformerEncoderKV(Module):
         for mod in self.layers:
             output = mod(
                 output,
-                mask_after=mask_after,
+                mask=mask,
                 is_causal=is_causal,
                 src_key_padding_mask=src_key_padding_mask,
                 use_kv_cache=use_kv_cache,
@@ -334,7 +334,7 @@ class CumulativeTransformerKV(Module):
     def forward(
         self,
         src: Tensor,
-        mask_after: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
         src_is_causal: Optional[bool] = None,
         use_kv_cache: bool = False,
@@ -344,9 +344,9 @@ class CumulativeTransformerKV(Module):
 
         Args:
             src: the sequence to the encoder (required).
-            mask_after: the mask_after tensor for cumulative attention (optional).
+            mask: the mask tensor for cumulative attention (optional).
             src_key_padding_mask: the Tensor mask for src keys per batch (optional).
-            src_is_causal: If specified, applies a causal mask. Will override mask_after.
+            src_is_causal: If specified, applies a causal mask. Will override mask.
                 Default: ``None``; try to detect a causal mask.
             use_kv_cache: Whether to use key-value caching for efficiency.
                 Default: ``False``.
@@ -356,7 +356,7 @@ class CumulativeTransformerKV(Module):
         Shape:
             - src: :math:`(S, E)` for unbatched input, :math:`(S, N, E)` if `batch_first=False` or
               `(N, S, E)` if `batch_first=True`.
-            - mask_after: :math:`(S,)` where S is sequence length.
+            - mask: :math:`(S,)` where S is sequence length.
             - src_key_padding_mask: :math:`(S)` for unbatched input otherwise :math:`(N, S)`.
 
             - output: :math:`(S, E)` for unbatched input, :math:`(S, N, E)` if `batch_first=False` or
@@ -366,14 +366,14 @@ class CumulativeTransformerKV(Module):
 
         Examples:
             >>> # xdoctest: +SKIP
-            >>> output = transformer_model(src, mask_after=mask_after)
+            >>> output = transformer_model(src, mask=mask)
         """
         if src.size(-1) != self.d_model:
             raise RuntimeError("the feature number of src must be equal to d_model")
 
         memory = self.encoder(
             src,
-            mask_after=mask_after,
+            mask=mask,
             src_key_padding_mask=src_key_padding_mask,
             is_causal=src_is_causal,
             use_kv_cache=use_kv_cache,
