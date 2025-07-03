@@ -48,6 +48,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
             operations, respectively. Otherwise it's done after. Default: ``False`` (after).
         bias: If set to ``False``, ``Linear`` and ``LayerNorm`` layers will not learn an additive
             bias. Default: ``True``.
+        pos_emb: the positional encoding module. Defaults to None.
 
     Examples::
         >>> encoder_layer = CumulativeTransformerEncoderLayerKV(d_model=512, nhead=8)
@@ -72,6 +73,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
         batch_first: bool = False,
         norm_first: bool = False,
         bias: bool = True,
+        pos_emb: Optional[Module] = None,
         device=None,
         dtype=None,
     ) -> None:
@@ -95,7 +97,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
         self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
         self.dropout1 = Dropout(dropout)
         self.dropout2 = Dropout(dropout)
-
+        self.pos_emb = pos_emb
         # Legacy string support for activation function.
         if isinstance(activation, str):
             activation = _get_activation_fn(activation)
@@ -131,6 +133,9 @@ class CumulativeTransformerEncoderLayerKV(Module):
         """
 
         x = src
+        if self.pos_emb is not None:
+            x = self.pos_emb(x)
+
         if self.norm_first:
             x = x + self._sa_block(
                 self.norm1(x), mask, src_key_padding_mask, is_causal=is_causal,
