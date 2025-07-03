@@ -31,6 +31,9 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         kdim=None,
         vdim=None,
         batch_first=False,
+        norm_q: Optional[Module] = None,
+        norm_k: Optional[Module] = None,
+        norm_v: Optional[Module] = None,
         device=None,
         dtype=None,
     ) -> None:
@@ -86,6 +89,10 @@ class CumulativeLinearMultiheadAttentionKV(Module):
             self.bias_v = Parameter(torch.empty((1, 1, embed_dim), **self.factory_kwargs))
         else:
             self.bias_k = self.bias_v = None
+
+        self.norm_q = norm_q
+        self.norm_k = norm_k
+        self.norm_v = norm_v
 
         self.kv_cache = None
         self._reset_parameters()
@@ -175,6 +182,13 @@ class CumulativeLinearMultiheadAttentionKV(Module):
             assert kv_cache.shape == (bsz, self.num_heads, 1, self.kdim//self.num_heads, self.vdim//self.num_heads)
         else:
             kv_cache = None
+
+        if self.norm_q is not None:
+            q = self.norm_q(q)
+        if self.norm_k is not None:
+            k = self.norm_k(k)
+        if self.norm_v is not None:
+            v = self.norm_v(v)
 
         attn_output, key_value_store = cumulative_linear_attn(
             q, k, v, 

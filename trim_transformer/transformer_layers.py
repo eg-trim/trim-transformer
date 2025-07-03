@@ -74,6 +74,9 @@ class CumulativeTransformerEncoderLayerKV(Module):
         norm_first: bool = False,
         bias: bool = True,
         pos_emb: Optional[Module] = None,
+        norm_q: Optional[Module] = None,
+        norm_k: Optional[Module] = None,
+        norm_v: Optional[Module] = None,
         device=None,
         dtype=None,
     ) -> None:
@@ -85,6 +88,9 @@ class CumulativeTransformerEncoderLayerKV(Module):
             dropout=dropout,
             bias=bias,
             batch_first=batch_first,
+            norm_q=norm_q,
+            norm_k=norm_k,
+            norm_v=norm_v,
             **factory_kwargs,
         )
         # Implementation of Feedforward model
