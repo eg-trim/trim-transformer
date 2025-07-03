@@ -91,7 +91,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
         self.linear1 = Linear(d_model, dim_feedforward, bias=bias, **factory_kwargs)
         self.dropout = Dropout(dropout)
         self.linear2 = Linear(dim_feedforward, d_model, bias=bias, **factory_kwargs)
-
+        self.batch_first = batch_first
         self.norm_first = norm_first
         self.norm1 = LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
         self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
@@ -131,10 +131,14 @@ class CumulativeTransformerEncoderLayerKV(Module):
             - src: (N, S, E) if batch_first=True or (S, N, E) if batch_first=False
             - mask: (S,) where S is sequence length
         """
-
         x = src
+        assert x.ndim == 3, "Input must have three axes."
+        if not self.batch_first:
+            x = x.permute(1, 0, 2)
         if self.pos_emb is not None:
             x = self.pos_emb(x)
+        if not self.batch_first:
+            x = x.permute(1, 0, 2)
 
         if self.norm_first:
             x = x + self._sa_block(
