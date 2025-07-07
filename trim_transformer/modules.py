@@ -129,7 +129,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         src_key_padding_mask: Optional[Tensor] = None,
         use_kv_cache: bool = False,
         update_kv_cache: bool = False,
-    ) -> tuple[Tensor, Optional[Tensor]]:
+    ) -> Tensor:
         is_batched = query.dim() == 3
 
         if not is_batched:
