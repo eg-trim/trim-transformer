@@ -2,7 +2,7 @@
 
 `trim-transformer` is a lightweight PyPI package that replicates the familiar interface of `torch.nn.TransformerEncoder`, but with an attention function of the form Attn(Q,K,V) = QK^TV. This implementation has time complexity O(nd^2), where n is the sequence length and d is the model dimension. Since the time
 complexity is linear in the sequence length, this implementation is well suited for high sequence length
-tasks. 
+tasks. Attention in this form has shown success in operator learning tasks, see [Choose a Transformer: Fourier or Galerkin](https://arxiv.org/abs/2105.14995).
 
 Additionally, this implementation supports key-value caching for inference that is also linear in the number of tokens generated. Finally, this implementation supports custom weight initialization functions for the query, key, and value projection matrices, and custom normalization layers for the query, key,
 and value activations.
