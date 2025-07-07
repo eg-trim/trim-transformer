@@ -1,6 +1,8 @@
 # Trim Transformer
 
-`trim-transformer` is a lightweight PyPI package that replicates the familiar interface of `torch.nn.TransformerEncoder`. The attention kernel has the form Attn(Q,K,V) = QK^TV. This implementation has complexity O(nd^2), where n is the sequence length and d is the model dimension.
+`trim-transformer` is a lightweight PyPI package that replicates the familiar interface of `torch.nn.TransformerEncoder`, but with an attention function of the form Attn(Q,K,V) = QK^TV. This implementation has time complexity O(nd^2), where n is the sequence length and d is the model dimension. Since the time
+complexity is linear in the sequence length, this implementation is well suited for high sequence length
+tasks. 
 
 Additionally, this implementation supports key-value caching for inference that is also linear in the number of tokens generated. Finally, this implementation supports custom weight initialization functions for the query, key, and value projection matrices, and custom normalization layers for the query, key,
 and value activations.
@@ -40,8 +42,7 @@ x = torch.randn(8, 2048, 512)  # (batch, seq_len, dim)
 out = model(x, is_causal=True)  # (batch, seq_len, dim)
 ```
 
-See tutorial_notebook.ipynb for demonstrations of each feature. And see demo_vs_baseline for an
-example of a complete pipeline and a comparison to a PyTorch baseline.
+See [tutorial_notebook.ipynb](tutorial_notebook.ipynb) for demonstrations of each feature. And see [demo_vs_baseline.ipynb](demo_vs_baseline.ipynb) for an example of a complete pipeline and a comparison to a PyTorch baseline.
 
 ## Masking
 
