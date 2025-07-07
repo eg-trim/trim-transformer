@@ -77,9 +77,9 @@ class CumulativeTransformerEncoderLayerKV(Module):
         norm_q: Optional[Module] = None,
         norm_k: Optional[Module] = None,
         norm_v: Optional[Module] = None,
-        q_weight_init: Optional[Callable[[Tensor], None]] = None,
-        k_weight_init: Optional[Callable[[Tensor], None]] = None,
-        v_weight_init: Optional[Callable[[Tensor], None]] = None,
+        q_weight_init: Optional[Callable[[Tensor], Tensor]] | Optional[Callable[[Tensor], None]] = None,
+        k_weight_init: Optional[Callable[[Tensor], Tensor]] | Optional[Callable[[Tensor], None]] = None,
+        v_weight_init: Optional[Callable[[Tensor], Tensor]] | Optional[Callable[[Tensor], None]] = None,
         device=None,
         dtype=None,
     ) -> None:
