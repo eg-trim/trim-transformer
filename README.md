@@ -48,7 +48,13 @@ See [tutorial_notebook.ipynb](tutorial_notebook.ipynb) for demonstrations of eac
 
 A significant departure from PyTorch syntax is the structure of the mask. Multi-linear attention with arbitrary boolean masks cannot be computed in time linear in the sequence length. Instead, this package supports masks such that the i-th query attends to all keys up to index m_i. Such masks can be specified by an integer array of length n, with values in [0, n-1], where n is the sequence length.
 
-For example, a causal mask of length n is given by torch.arange(n). And the one dimensional mask [2, 0, 1] corresponds to the two dimensional mask [[False, False, False], [False, True, True], [False, False, True]], following the PyTorch convention that True means to set that element of the attention matrix to 0.
+For example, a causal mask of length `n` is given by `torch.arange(n)`. To illustrate further, consider the one-dimensional mask `[2, 0, 1]`. This corresponds to the following two-dimensional mask, where, following the PyTorch convention, `True` indicates that an element is masked.
+
+|             | Key 0 | Key 1 | Key 2 |
+|-------------|:-----:|:-----:|:-----:|
+| **Query 0** | `False` | `False` | `False` |
+| **Query 1** | `False` | `True`  | `True`  |
+| **Query 2** | `False` | `False` | `True`  |
 
 ## Key-value caching
 
