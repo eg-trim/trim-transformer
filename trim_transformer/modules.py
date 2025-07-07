@@ -2,9 +2,9 @@ import torch
 from torch import Tensor
 from torch.nn import Module, Parameter
 from torch.nn.init import xavier_uniform_, constant_, xavier_normal_
-from torch.nn.functional import _in_projection, _in_projection_packed
+from torch.nn.functional import _in_projection
 from torch.nn.modules.linear import NonDynamicallyQuantizableLinear
-from typing import Optional
+from typing import Optional, Callable
 
 from .functional import cumulative_linear_attn
 
@@ -34,6 +34,9 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         norm_q: Optional[Module] = None,
         norm_k: Optional[Module] = None,
         norm_v: Optional[Module] = None,
+        q_weight_init: Optional[Callable[[Tensor], None]] = None,
+        k_weight_init: Optional[Callable[[Tensor], None]] = None,
+        v_weight_init: Optional[Callable[[Tensor], None]] = None,
         device=None,
         dtype=None,
     ) -> None:
@@ -47,7 +50,6 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         self.embed_dim = embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
-        self._qkv_same_embed_dim = self.kdim == embed_dim and self.vdim == embed_dim
 
         self.num_heads = num_heads
         self.dropout = dropout
@@ -57,29 +59,21 @@ class CumulativeLinearMultiheadAttentionKV(Module):
             self.head_dim * num_heads == self.embed_dim
         ), "embed_dim must be divisible by num_heads"
 
-        if not self._qkv_same_embed_dim:
-            self.q_proj_weight = Parameter(
-                torch.empty((embed_dim, embed_dim), **self.factory_kwargs)
-            )
-            self.k_proj_weight = Parameter(
-                torch.empty((embed_dim, self.kdim), **self.factory_kwargs)
-            )
-            self.v_proj_weight = Parameter(
-                torch.empty((embed_dim, self.vdim), **self.factory_kwargs)
-            )
-            self.register_parameter("in_proj_weight", None)
-        else:
-            self.in_proj_weight = Parameter(
-                torch.empty((3 * embed_dim, embed_dim), **self.factory_kwargs)
-            )
-            self.register_parameter("q_proj_weight", None)
-            self.register_parameter("k_proj_weight", None)
-            self.register_parameter("v_proj_weight", None)
+        self.q_proj_weight = Parameter(
+            torch.empty((embed_dim, embed_dim), **self.factory_kwargs)
+        )
+        self.k_proj_weight = Parameter(
+            torch.empty((embed_dim, self.kdim), **self.factory_kwargs)
+        )
+        self.v_proj_weight = Parameter(
+            torch.empty((embed_dim, self.vdim), **self.factory_kwargs)
+        )
 
         if bias:
             self.in_proj_bias = Parameter(torch.empty(3 * embed_dim, **self.factory_kwargs))
         else:
             self.register_parameter("in_proj_bias", None)
+
         self.out_proj = NonDynamicallyQuantizableLinear(
             embed_dim, embed_dim, bias=bias, **self.factory_kwargs
         )
@@ -94,15 +88,27 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         self.norm_k = norm_k
         self.norm_v = norm_v
 
+        self.q_weight_init = q_weight_init
+        self.k_weight_init = k_weight_init
+        self.v_weight_init = v_weight_init
+
         self.kv_cache = None
         self._reset_parameters()
 
     def _reset_parameters(self):
-        if self._qkv_same_embed_dim:
-            xavier_uniform_(self.in_proj_weight)
+        if self.q_weight_init is not None:
+            self.q_weight_init(self.q_proj_weight)
         else:
             xavier_uniform_(self.q_proj_weight)
+        
+        if self.k_weight_init is not None:
+            self.k_weight_init(self.k_proj_weight)
+        else:
             xavier_uniform_(self.k_proj_weight)
+
+        if self.v_weight_init is not None:
+            self.v_weight_init(self.v_proj_weight)
+        else:
             xavier_uniform_(self.v_proj_weight)
 
         if self.in_proj_bias is not None:
@@ -112,12 +118,6 @@ class CumulativeLinearMultiheadAttentionKV(Module):
             xavier_normal_(self.bias_k)
         if self.bias_v is not None:
             xavier_normal_(self.bias_v)
-
-    def __setstate__(self, state):
-        # Support loading old checkpoints
-        if "_qkv_same_embed_dim" not in state:
-            state["_qkv_same_embed_dim"] = True
-        super().__setstate__(state)
 
     def forward(
         self,
@@ -142,18 +142,15 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         # Get dimensions
         bsz, tgt_len, embed_dim = query.shape
         bsz, src_len, _ = key.shape
-        
+
         # Input projections
-        if not self._qkv_same_embed_dim:
-            q, k, v = _in_projection(
-                query, key, value,
-                self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
-                self.in_proj_bias[0:embed_dim] if self.in_proj_bias is not None else None,
-                self.in_proj_bias[embed_dim:2*embed_dim] if self.in_proj_bias is not None else None,
-                self.in_proj_bias[2*embed_dim:] if self.in_proj_bias is not None else None,
-            )
-        else:
-            q, k, v = _in_projection_packed(query, key, value, self.in_proj_weight, self.in_proj_bias)
+        q, k, v = _in_projection(
+            query, key, value,
+            self.q_proj_weight, self.k_proj_weight, self.v_proj_weight,
+            self.in_proj_bias[0:embed_dim] if self.in_proj_bias is not None else None,
+            self.in_proj_bias[embed_dim:2*embed_dim] if self.in_proj_bias is not None else None,
+            self.in_proj_bias[2*embed_dim:] if self.in_proj_bias is not None else None,
+        )
 
         # Add bias vectors if specified
         if self.bias_k is not None and self.bias_v is not None:

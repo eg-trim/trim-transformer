@@ -77,6 +77,9 @@ class CumulativeTransformerEncoderLayerKV(Module):
         norm_q: Optional[Module] = None,
         norm_k: Optional[Module] = None,
         norm_v: Optional[Module] = None,
+        q_weight_init: Optional[Callable[[Tensor], None]] = None,
+        k_weight_init: Optional[Callable[[Tensor], None]] = None,
+        v_weight_init: Optional[Callable[[Tensor], None]] = None,
         device=None,
         dtype=None,
     ) -> None:
@@ -91,6 +94,9 @@ class CumulativeTransformerEncoderLayerKV(Module):
             norm_q=norm_q,
             norm_k=norm_k,
             norm_v=norm_v,
+            q_weight_init=q_weight_init,
+            k_weight_init=k_weight_init,
+            v_weight_init=v_weight_init,
             **factory_kwargs,
         )
         # Implementation of Feedforward model
