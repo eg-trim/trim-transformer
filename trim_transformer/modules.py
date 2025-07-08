@@ -37,6 +37,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         q_weight_init: Optional[Callable[[Tensor], Tensor]] | Optional[Callable[[Tensor], None]] = None,
         k_weight_init: Optional[Callable[[Tensor], Tensor]] | Optional[Callable[[Tensor], None]] = None,
         v_weight_init: Optional[Callable[[Tensor], Tensor]] | Optional[Callable[[Tensor], None]] = None,
+        scale: Optional[float] = None,
         device=None,
         dtype=None,
     ) -> None:
@@ -92,6 +93,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         self.k_weight_init = k_weight_init
         self.v_weight_init = v_weight_init
 
+        self.scale = scale
         self.kv_cache = None
         self._reset_parameters()
 
@@ -192,7 +194,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
             mask=mask,
             dropout_p=dropout_p,
             is_causal=is_causal,
-            scale=None,
+            scale=self.scale,
             enable_gqa=False,
             kv_cache=kv_cache
         )

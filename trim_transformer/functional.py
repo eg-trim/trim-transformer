@@ -5,7 +5,7 @@ def cumulative_linear_attn(query, key, value, mask = None, dropout_p=0.0,
         is_causal=False, scale=None, enable_gqa=False, kv_cache=None):
     seq_len = query.size(-2)
     dict_size = key.size(-2)
-    scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+    scale_factor = 1 / dict_size if scale is None else scale
 
     if is_causal:
         assert mask is None
