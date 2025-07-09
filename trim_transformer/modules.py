@@ -8,7 +8,7 @@ from typing import Optional, Callable
 
 from .functional import multi_linear_attn
 
-class TrimKVMultiheadAttentionKV(Module):
+class TrimMultiheadAttention(Module):
     """
     MultiheadAttention module using multi-linear attention instead of 
     standard scaled dot product attention.
