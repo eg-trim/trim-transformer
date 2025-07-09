@@ -58,7 +58,7 @@ For example, a causal mask of length `n` is given by `torch.arange(n)`. To illus
 
 ## Key-value caching
 
-Inference with key value can be performed with a simple loop.
+Inference with key-value caching can be performed with a simple loop.
 
 ```python
 def generate(model, initial_tokens, num_new_tokens=5):
