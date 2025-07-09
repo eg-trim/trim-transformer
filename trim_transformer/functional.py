@@ -1,7 +1,6 @@
 import torch
-import math
 
-def cumulative_linear_attn(query, key, value, mask = None, dropout_p=0.0,
+def multi_linear_attn(query, key, value, mask = None, dropout_p=0.0,
         is_causal=False, scale=None, enable_gqa=False, kv_cache=None):
     seq_len = query.size(-2)
     dict_size = key.size(-2)

@@ -6,15 +6,15 @@ from torch.nn.functional import _in_projection
 from torch.nn.modules.linear import NonDynamicallyQuantizableLinear
 from typing import Optional, Callable
 
-from .functional import cumulative_linear_attn
+from .functional import multi_linear_attn
 
-class CumulativeLinearMultiheadAttentionKV(Module):
+class TrimKVMultiheadAttentionKV(Module):
     """
-    MultiheadAttention module using cumulative linear attention instead of 
+    MultiheadAttention module using multi-linear attention instead of 
     standard scaled dot product attention.
     
     This implementation follows the same interface as PyTorch's MultiheadAttention
-    but uses cumulative linear attention for more efficient computation.
+    but uses multi-linear attention for more efficient computation.
 
     Additionally implements a key-value cache for inference.
     """
@@ -171,7 +171,6 @@ class CumulativeLinearMultiheadAttentionKV(Module):
             mask_expanded = mask_expanded.expand(bsz, self.num_heads, src_len, self.head_dim)
             k = k.masked_fill(mask_expanded, 0.0)
 
-        # Apply cumulative linear attention
         dropout_p = self.dropout if self.training else 0.0
 
         if use_kv_cache:
@@ -189,7 +188,7 @@ class CumulativeLinearMultiheadAttentionKV(Module):
         if self.norm_v is not None:
             v = self.norm_v(v)
 
-        attn_output, key_value_store = cumulative_linear_attn(
+        attn_output, key_value_store = multi_linear_attn(
             q, k, v, 
             mask=mask,
             dropout_p=dropout_p,

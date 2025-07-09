@@ -8,7 +8,7 @@ from torch import Tensor
 from torch.nn.init import xavier_uniform_
 from torch.nn import Module, ModuleList, Dropout, Linear, LayerNorm
 
-from .modules import CumulativeLinearMultiheadAttentionKV
+from .modules import TrimMultiheadAttention
 
 
 def _get_clones(module, N):
@@ -28,10 +28,9 @@ def _get_activation_fn(activation: Union[str, Callable[[Tensor], Tensor]]) -> Ca
     return activation
 
 
-class CumulativeTransformerEncoderLayerKV(Module):
-    r"""CumulativeTransformerEncoderLayerKV is made up of cumulative self-attention and feedforward network.
-    
-    This is a modified version of PyTorch's TransformerEncoderLayer that uses cumulative linear attention
+class TrimTransformerEncoderLayer(Module):
+    r"""
+    This is a modified version of PyTorch's TransformerEncoderLayer that uses multi-linear attention
     instead of standard scaled dot product attention for more efficient computation.
 
     Args:
@@ -51,12 +50,12 @@ class CumulativeTransformerEncoderLayerKV(Module):
         pos_emb: the positional encoding module. Defaults to None.
 
     Examples::
-        >>> encoder_layer = CumulativeTransformerEncoderLayerKV(d_model=512, nhead=8)
+        >>> encoder_layer = TrimTransformerEncoderLayer(d_model=512, nhead=8)
         >>> src = torch.rand(10, 32, 512)
         >>> out = encoder_layer(src)
 
     Alternatively, when ``batch_first`` is ``True``:
-        >>> encoder_layer = CumulativeTransformerEncoderLayerKV(d_model=512, nhead=8, batch_first=True)
+        >>> encoder_layer = TrimTransformerEncoderLayer(d_model=512, nhead=8, batch_first=True)
         >>> src = torch.rand(32, 10, 512)
         >>> out = encoder_layer(src)
     """
@@ -86,7 +85,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
-        self.self_attn = CumulativeLinearMultiheadAttentionKV(
+        self.self_attn = TrimLinearMultiheadAttention(
             d_model,
             nhead,
             dropout=dropout,
@@ -130,7 +129,7 @@ class CumulativeTransformerEncoderLayerKV(Module):
 
         Args:
             src: the sequence to the encoder layer (required).
-            mask: the mask tensor for cumulative attention (optional).
+            mask: the mask tensor for multi-linear attention (optional).
                 Should be of shape (seq_len,) with integer values indicating 
                 the last position each token can attend to.
             src_key_padding_mask: the mask for the src keys per batch (optional).
@@ -201,25 +200,25 @@ class CumulativeTransformerEncoderLayerKV(Module):
         self.self_attn.clear_kv_cache()
 
 
-class CumulativeTransformerEncoderKV(Module):
-    r"""CumulativeTransformerEncoderKV is a stack of N encoder layers using cumulative attention.
+class TrimTransformerEncoder(Module):
+    r"""TrimTransformerEncoder is a stack of N encoder layers using multi-linear attention.
 
-    Users can build models with cumulative linear attention for improved efficiency.
+    Users can build models with multi-linear attention for improved efficiency.
 
     Args:
-        encoder_layer: an instance of the CumulativeTransformerEncoderLayerKV() class (required).
+        encoder_layer: an instance of the TrimTransformerEncoderLayer() class (required).
         num_layers: the number of sub-encoder-layers in the encoder (required).
         norm: the layer normalization component (optional).
 
     Examples::
-        >>> encoder_layer = CumulativeTransformerEncoderLayerKV(d_model=512, nhead=8)
-        >>> transformer_encoder = CumulativeTransformerEncoderKV(encoder_layer, num_layers=6)
+        >>> encoder_layer = TrimTransformerEncoderLayer(d_model=512, nhead=8)
+        >>> transformer_encoder = TrimTransformerEncoder(encoder_layer, num_layers=6)
         >>> src = torch.rand(10, 32, 512)
         >>> out = transformer_encoder(src)
     """
     def __init__(
         self,
-        encoder_layer: "CumulativeTransformerEncoderLayerKV",
+        encoder_layer: "TrimTransformerEncoderLayer",
         num_layers: int,
         norm: Optional[Module] = None,
     ) -> None:
@@ -242,7 +241,7 @@ class CumulativeTransformerEncoderKV(Module):
 
         Args:
             src: the sequence to the encoder (required).
-            mask: the mask tensor for cumulative attention (optional).
+            mask: the mask tensor for multi-linear attention (optional).
             src_key_padding_mask: the mask for the src keys per batch (optional).
             is_causal: If specified, applies a causal mask. Will override mask.
                 Default: ``None``; try to detect a causal mask.

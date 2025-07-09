@@ -31,10 +31,10 @@ pip install git+https://github.com/emanuel-nuclearsoftware/trim-transformer.git
 
 ```python
 import torch
-from trim_transformer.transformer_layers import CumulativeTransformerKV
+from trim_transformer.transformer_layers import TrimTransformerEncoderLayer, TrimTransformerEncoder
 
-layer = CumulativeTransformerEncoderLayerKV(d_model=EMBED_DIM, nhead=NUM_HEADS, batch_first=True)
-model = CumulativeTransformerEncoderKV(layer, num_layers=NUM_LAYERS)
+layer = TrimTransformerEncoderLayer(d_model=EMBED_DIM, nhead=NUM_HEADS, batch_first=True)
+model = TrimTransformerEncoder(layer, num_layers=NUM_LAYERS)
 
 x = torch.randn(8, 2048, 512)  # (batch, seq_len, dim)
 
@@ -42,7 +42,7 @@ x = torch.randn(8, 2048, 512)  # (batch, seq_len, dim)
 out = model(x, is_causal=True)  # (batch, seq_len, dim)
 ```
 
-See [tutorial_notebook.ipynb](tutorial_notebook.ipynb) for demonstrations of each feature. And see [demo_vs_baseline.ipynb](demo_vs_baseline.ipynb) for an example of a complete pipeline and a comparison to a PyTorch baseline.
+See [tutorial_notebook.ipynb](tutorial_notebook.ipynb) for demonstrations of each feature. And see [trim_vs_softmax.ipynb](trim_vs_softmax.ipynb) for an example of a complete pipeline and a comparison to a PyTorch baseline.
 
 ## Masking
 
