@@ -85,7 +85,7 @@ class TrimTransformerEncoderLayer(Module):
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
-        self.self_attn = TrimLinearMultiheadAttention(
+        self.self_attn = TrimMultiheadAttention(
             d_model,
             nhead,
             dropout=dropout,
