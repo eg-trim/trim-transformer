@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="trim-transformer",
-    version="0.1.0",
+    version="0.1.1",
     author="Emanuel Gordis",
     author_email="emanuel@nuclearsoftware.com",
     description="A linear-attention transformer implementation with KV caching.",
