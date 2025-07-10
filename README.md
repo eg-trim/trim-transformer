@@ -2,6 +2,8 @@
 
 `trim-transformer` is a lightweight PyPI package that replicates the familiar interface of `torch.nn.TransformerEncoder`, but with an attention function of the form Attn(Q,K,V) = QK^TV, which we call multi-linear attention. This implementation has time complexity O(nd^2), where n is the sequence length and d is the model dimension. Since the time complexity is linear in the sequence length, this implementation is well suited for high sequence length tasks. Attention in this form has shown success in operator learning tasks, see [Choose a Transformer: Fourier or Galerkin](https://arxiv.org/abs/2105.14995).
 
+This implementation is particularly relevent for training physics models where high sequence length can come from large grid sizes, long time periods, or both.
+
 Additionally, this implementation supports key-value caching for inference that is also linear in the number of tokens generated. Finally, this implementation supports custom weight initialization functions for the query, key, and value projection matrices, and custom normalization layers for the query, key,
 and value activations.
 
@@ -24,7 +26,17 @@ pip install git+https://github.com/emanuel-nuclearsoftware/trim-transformer.git
 ```
 
 ---
+## Benchmarks
 
+Below are some benchmark plots demonstrating model performance and resource usage on the Navier-Stokes dataset from https://arxiv.org/abs/2010.08895:
+
+The Trim Transformer achives more than 90% reduction in memory usage compared to a standard Pytorch transformer using softmax attention and 3.5x faster time per epoch while maintaining very similar validation loss. As grid size and sequence length increase these gains become even more drastic.
+![Memory Usage](plots/mem_use.png)
+
+![Time per Epoch](plots/time:epoch.png)
+![Training Loss](plots/loss.png)
+
+---
 ## Quickstart
 
 ```python
