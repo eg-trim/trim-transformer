@@ -22,7 +22,7 @@ pip install trim-transformer
 Alternatively, install the latest commit from GitHub:
 
 ```bash
-pip install git+https://github.com/emanuel-nuclearsoftware/trim-transformer.git
+pip install git+https://github.com/eg-trim/trim-transformer.git
 ```
 
 ---
