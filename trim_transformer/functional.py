@@ -178,6 +178,7 @@ def multi_linear_attn(
         B, H, _, DK = key.shape
         DV = value.shape[-1]
         kv_cache = torch.zeros(B, H, DK, DV, device=query.device, dtype=query.dtype)
+    assert kv_cache.shape == (B, H, DK, DV)
 
     query *= scale_factor
     use_triton = mask is not None and _TRITON_AVAILABLE and query.device.type == 'cuda'

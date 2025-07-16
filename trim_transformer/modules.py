@@ -175,9 +175,9 @@ class TrimMultiheadAttention(Module):
 
         if use_kv_cache:
             if self.kv_cache is None:
-                self.kv_cache = torch.zeros(bsz, self.num_heads, 1, self.kdim//self.num_heads, self.vdim//self.num_heads, device=query.device)
+                self.kv_cache = torch.zeros(bsz, self.num_heads, self.kdim//self.num_heads, self.vdim//self.num_heads, device=query.device)
             kv_cache = self.kv_cache
-            assert kv_cache.shape == (bsz, self.num_heads, 1, self.kdim//self.num_heads, self.vdim//self.num_heads)
+            assert kv_cache.shape == (bsz, self.num_heads, self.kdim//self.num_heads, self.vdim//self.num_heads)
         else:
             kv_cache = None
 
