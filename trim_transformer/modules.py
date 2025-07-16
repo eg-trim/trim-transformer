@@ -199,7 +199,7 @@ class TrimMultiheadAttention(Module):
         )
 
         if update_kv_cache:
-            self.kv_cache = key_value_store[:, :, -1:, :, :]
+            self.kv_cache = key_value_store
 
         # Reshape back: (batch, num_heads, tgt_len, head_dim) -> (batch, tgt_len, embed_dim)
         attn_output = attn_output.transpose(1, 2).reshape(bsz, tgt_len, embed_dim)
