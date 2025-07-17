@@ -9,6 +9,7 @@ except Exception:
     # Triton not available on this system – fall back to PyTorch ops.
     # If the mask has many unique values, attention will be slow.
     _TRITON_AVAILABLE = False
+_TRITON_AVAILABLE = False
 
 
 def _multi_linear_attn_no_mask(query, key, value, dropout_p, kv_cache):
