@@ -10,18 +10,21 @@ except Exception:
     # If the sequence length is long, and mask is not None, attention will be memory intensive.
     _TRITON_AVAILABLE = False
 
+def set_triton_available(available: bool):
+    global _TRITON_AVAILABLE
+    _TRITON_AVAILABLE = available   
 
-def _multi_linear_attn_no_mask(query, key, value, dropout_p, kv_cache):
+
+def _multi_linear_attn_no_mask(query, key, value, kv_cache, dropout_p):
     key_value_store = key.transpose(-2, -1) @ value + kv_cache  # [..., d_k, d_v]
     key_value_store_view = torch.dropout(key_value_store, dropout_p, train=True)
     out = query @ key_value_store_view
     return out, key_value_store
 
-
-def _multi_linear_attn_mask_torch(query, key, value, mask, dropout_p, kv_cache):
-    key = key.unsqueeze(-1)  # [..., S, d_k, 1]
-    value = value.unsqueeze(-2)  # [..., S, 1, d_v]
-    key_value_store = key @ value  # [..., S, d_k, d_v]
+def _multi_linear_attn_mask_torch(query, key, value, kv_cache, mask, dropout_p):
+    key = key.unsqueeze(-1)
+    value = value.unsqueeze(-2)
+    key_value_store = key @ value
 
     safe_mask = mask.clone()
     neg_mask = safe_mask < 0
@@ -35,7 +38,6 @@ def _multi_linear_attn_mask_torch(query, key, value, mask, dropout_p, kv_cache):
     out = (query.unsqueeze(-2) @ key_value_store).squeeze(-2)
     key_value_store = key_value_store[..., -1, :, :]
     return out, key_value_store
-
 
 def pad_to_pow2(x: torch.Tensor, dims=None) -> torch.Tensor:
     shape = torch.as_tensor(x.shape, device=x.device, dtype=torch.int32)
@@ -67,22 +69,28 @@ def build_reverse_mask(mask : torch.Tensor, num_keys: int) -> torch.Tensor:
 
     key_indices = torch.arange(num_keys, device=mask.device, dtype=mask.dtype)
 
-    reverse_mask = torch.searchsorted(mask, key_indices, right=False).to(torch.int32)
-    reverse_mask = torch.flip(mask.shape[0] - reverse_mask - 1, (0,))
-    return reverse_mask
+    attend_to_ge = torch.searchsorted(mask, key_indices, right=False).to(torch.int32)
+    mask_le = attend_to_ge - 1
+    mask_g_flipped_q = mask.shape[0] - mask_le - 1
+    mask_ge_flipped_q = mask_g_flipped_q - 1
+    mask_ge_flipped_q_k = torch.flip(mask_ge_flipped_q, (0,))
+    return mask_ge_flipped_q_k
 
 if _TRITON_AVAILABLE:
 
     @triton.jit
     def _mla_mask_kernel(
-        Q_ptr, K_ptr, V_ptr, MASK_ptr, kv_cache_ptr,
+        Q_ptr, K_ptr, V_ptr, kv_cache_ptr,
+        MASK_ptr,
         OUT_ptr, OUT_KV_cache_ptr,
         S: tl.constexpr,
         R: tl.constexpr,
         DK: tl.constexpr,
         DV: tl.constexpr,
-        dropout_p,
+        dropout_p: tl.constexpr,
         accumulate_dropout: tl.constexpr,
+        transpose_dropout: tl.constexpr,
+        reverse_counter: tl.constexpr,
         seed,
     ):
         pid = tl.program_id(axis=0)
@@ -128,28 +136,45 @@ if _TRITON_AVAILABLE:
                 next_kv = k_vec[:, None] * v_vec[None, :]
 
                 if dropout_p > 0.0 and accumulate_dropout:
-                    # Reproduce the dropout mask from forward pass
-                    dropout_scaling = 1.0 - dropout_p
-                    rng_seed = seed + pid * R + (R - 1 - idx)
+                    dropout_scale = 1.0 - dropout_p
+
+                    if reverse_counter:
+                        rng_seed = seed + pid * R + (R - 1 - idx)
+                    else:
+                        rng_seed = seed + pid * S + pos
+
+                    if transpose_dropout:
+                        offs_k = tl.arange(0, DV)[:, None] * DK
+                        offs_v = tl.arange(0, DK)[None, :]
+                        offset = offs_k + offs_v
+                        rnd = tl.rand(rng_seed, offset)
+                        rnd = tl.trans(rnd, (1, 0))
+                    else:
+                        offs_k = tl.arange(0, DK)[:, None] * DV
+                        offs_v = tl.arange(0, DV)[None, :]
+                        offset = offs_k + offs_v
+                        rnd = tl.rand(rng_seed, offset)
+                    dropout_mask = rnd >= dropout_p
+                    running_kv += tl.where(dropout_mask, next_kv, 0.0) / dropout_scale
+                else:
+                    running_kv += next_kv
+
+            if dropout_p > 0.0 and not accumulate_dropout:
+                dropout_scale = 1.0 - dropout_p
+                rng_seed = seed + pid * S + pos
+                if transpose_dropout:
                     offs_k = tl.arange(0, DV)[:, None] * DK
                     offs_v = tl.arange(0, DK)[None, :]
                     offset = offs_k + offs_v
                     rnd = tl.rand(rng_seed, offset)
                     rnd = tl.trans(rnd, (1, 0))
-                    dropout_mask = tl.cast(rnd >= dropout_p, tl.float32)
-                    running_kv += next_kv * dropout_mask / dropout_scaling
                 else:
-                    running_kv += next_kv
-
-            if dropout_p > 0.0 and not accumulate_dropout:
-                dropout_scaling = 1.0 - dropout_p
-                rng_seed = seed + pid * S + pos
-                offs_k = tl.arange(0, DK)[:, None] * DV
-                offs_v = tl.arange(0, DV)[None, :]
-                offset = offs_k + offs_v
-                rnd = tl.rand(rng_seed, offset)
-                dropout_mask = tl.cast(rnd >= dropout_p, tl.float32)
-                kv_view = running_kv * dropout_mask / dropout_scaling
+                    offs_k = tl.arange(0, DK)[:, None] * DV
+                    offs_v = tl.arange(0, DV)[None, :]
+                    offset = offs_k + offs_v
+                    rnd = tl.rand(rng_seed, offset)
+                dropout_mask = rnd >= dropout_p
+                kv_view = tl.where(dropout_mask, running_kv, 0.0) / dropout_scale
             else:
                 kv_view = running_kv
 
@@ -159,15 +184,15 @@ if _TRITON_AVAILABLE:
             prev_idx = tl.maximum(prev_idx, tgt_idx)
         tl.store(OUT_KV_cache_block_ptr, running_kv)
 
-def _run_mla_mask_triton_kernel(query, key, value, mask, dropout_p, kv_cache, accumulate_dropout=False, seed=None):
+def _run_mla_mask_triton_kernel(query, key, value, kv_cache, mask, dropout_p, accumulate_dropout=False, transpose_dropout=False, reverse_counter=False, seed=None):
     B, H, S, DK = query.shape
     R, DV = value.shape[-2:]
 
     q = query.contiguous()
     k = key.contiguous()
     v = value.contiguous()
-    m = mask.contiguous()
     kv_c = kv_cache.contiguous()
+    m = mask.contiguous()
 
     out = torch.empty((B, H, S, DV), device=query.device, dtype=query.dtype)
     kv_out = torch.empty((B, H, DK, DV), device=query.device, dtype=query.dtype)
@@ -181,16 +206,18 @@ def _run_mla_mask_triton_kernel(query, key, value, mask, dropout_p, kv_cache, ac
         q,
         k,
         v,
-        m,
         kv_c,
+        m,
         out,
         kv_out,
         S=S,
         R=R,
         DK=DK,
         DV=DV,
-        dropout_p=dropout_p,
+        dropout_p=tl.constexpr(dropout_p),
         accumulate_dropout=tl.constexpr(accumulate_dropout),
+        transpose_dropout=tl.constexpr(transpose_dropout),
+        reverse_counter=tl.constexpr(reverse_counter),
         seed=seed,
     )
 
@@ -198,20 +225,21 @@ def _run_mla_mask_triton_kernel(query, key, value, mask, dropout_p, kv_cache, ac
 
 class _MLAMaskAutogradFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, query, key, value, mask, dropout_p: float, kv_cache):
-        seed = get_seed()
+    def forward(ctx, query, key, value, kv_cache, mask, dropout_p: float, seed=None):
+        if seed is None:
+            seed = get_seed()
 
-        ctx.save_for_backward(query, key, value, mask, kv_cache)
+        ctx.save_for_backward(query, key, value, kv_cache, mask)
         ctx.dropout_p = dropout_p
         ctx.seed = seed
 
-        out, kv_out = _run_mla_mask_triton_kernel(query, key, value, mask, dropout_p, kv_cache, seed=seed)
+        out, kv_out = _run_mla_mask_triton_kernel(query, key, value, kv_cache, mask, dropout_p, seed=seed)
 
         return out, kv_out
 
     @staticmethod
     def backward(ctx, grad_out, grad_kv_out):
-        query, key, value, mask, kv_cache = ctx.saved_tensors
+        query, key, value, kv_cache, mask = ctx.saved_tensors
         seed = ctx.seed
         reverse_kv_cache = kv_cache.transpose(-2, -1)
         reverse_mask = build_reverse_mask(mask, key.shape[-2])
@@ -219,25 +247,42 @@ class _MLAMaskAutogradFunction(torch.autograd.Function):
         reverse_key = key.flip(-2)
         reverse_value = value.flip(-2)
         reverse_grad_out = grad_out.flip(-2)
+        empty_query = torch.zeros_like(query)
         empty_kv = torch.zeros_like(kv_cache)
+        causal_mask = torch.arange(mask.shape[0], device=mask.device, dtype=mask.dtype)
 
-        dQ, _ = _run_mla_mask_triton_kernel(grad_out, value, key, mask, ctx.dropout_p, reverse_kv_cache, accumulate_dropout=False, seed=seed)
-        dK, _ = _run_mla_mask_triton_kernel(reverse_value, reverse_grad_out, reverse_query, reverse_mask, ctx.dropout_p, empty_kv, accumulate_dropout=True, seed=seed)
-        dV, _ = _run_mla_mask_triton_kernel(reverse_key, reverse_query, reverse_grad_out, reverse_mask, ctx.dropout_p, empty_kv, accumulate_dropout=True, seed=seed)
-        dKv = query.transpose(-2, -1) @ grad_out
-
+        dQ, _ = _run_mla_mask_triton_kernel(grad_out, value, key, reverse_kv_cache,
+                                            mask, ctx.dropout_p,
+                                            accumulate_dropout=False, transpose_dropout=True, reverse_counter=False,
+                                            seed=seed)
+        dK, _ = _run_mla_mask_triton_kernel(reverse_value, reverse_grad_out, reverse_query, empty_kv,
+                                            reverse_mask, ctx.dropout_p,
+                                            accumulate_dropout=True, transpose_dropout=True, reverse_counter=True, 
+                                            seed=seed)
+        dV, _ = _run_mla_mask_triton_kernel(reverse_key, reverse_query, reverse_grad_out, empty_kv,
+                                            reverse_mask, ctx.dropout_p,
+                                            accumulate_dropout=True, transpose_dropout=False, reverse_counter=True,
+                                            seed=seed)
+        _, dKv = _run_mla_mask_triton_kernel(empty_query, query, grad_out, empty_kv,
+                                            causal_mask, ctx.dropout_p,
+                                            accumulate_dropout=True, transpose_dropout=False, reverse_counter=False,
+                                            seed=seed)
         dK = dK.flip(-2)
         dV = dV.flip(-2)
 
-        dK += value @ grad_kv_out.transpose(-2, -1)
-        dV += key @ grad_kv_out
-        dKv += grad_kv_out
+        max_active_idx = mask[-1]
+        kv_grad_mask = (torch.arange(key.shape[-2], device=key.device, dtype=torch.int32) <= max_active_idx)
+        kv_grad_mask = kv_grad_mask.view(1, 1, -1, 1)
 
-        return dQ, dK, dV, None, None, dKv
+        dK = dK + (value @ grad_kv_out.transpose(-2, -1)) * kv_grad_mask
+        dV = dV + (key @ grad_kv_out) * kv_grad_mask
+        dKv = dKv + grad_kv_out
 
-def _multi_linear_attn_mask_triton(query, key, value, mask, dropout_p, kv_cache):
+        return dQ, dK, dV, dKv, None, None, None
+
+def _multi_linear_attn_mask_triton(query, key, value, kv_cache, mask, dropout_p, seed=None):
     out, kv_cache = _MLAMaskAutogradFunction.apply(
-        query, key, value, mask, dropout_p, kv_cache
+        query, key, value, kv_cache, mask, dropout_p, seed
     )
     return out, kv_cache
 
@@ -245,12 +290,13 @@ def multi_linear_attn(
     query,
     key,
     value,
+    kv_cache=None,
     mask=None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale=None,
     enable_gqa: bool = False,
-    kv_cache=None,
+    seed=None,
 ):
     seq_len = query.size(-2)
     B, H, dict_size, DK = key.shape
@@ -291,9 +337,10 @@ def multi_linear_attn(
                 query,
                 key,
                 value,
+                kv_cache,
                 mask,
                 dropout_p,
-                kv_cache,
+                seed=seed,
             )
             out = out[..., :DV]
             kv_cache = kv_cache[:, :, :DK, :DV]
@@ -302,26 +349,27 @@ def multi_linear_attn(
                 query,
                 key,
                 value,
+                kv_cache,
                 mask,
                 dropout_p,
-                kv_cache,
+                seed=seed,
             )
     elif mask is not None:
         out, kv_cache = _multi_linear_attn_mask_torch(
             query,
             key,
             value,
+            kv_cache,
             mask,
             dropout_p,
-            kv_cache,
         )
     else:
         out, kv_cache = _multi_linear_attn_no_mask(
             query,
             key,
             value,
+            kv_cache,
             dropout_p,
-            kv_cache
         )
     if received_mask:
         out = out[..., inv_perm, :]
